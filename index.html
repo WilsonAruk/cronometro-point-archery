@@ -77,6 +77,22 @@ fieldset:disabled{opacity:.5}
 .legend{color:var(--muted);font-size:.78rem;line-height:1.5;margin:0}
 @media (max-width:380px){.grid{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){.panel{transition:none}}
+/* Modo foco: ao iniciar, só logo + cronômetro + controles compactos */
+body.focus .modes,body.focus details,body.focus .stats,body.focus .legend,body.focus header .sub{display:none}
+body.focus .app{height:100%;min-height:0;padding-block:10px 12px;gap:10px;max-width:none}
+body.focus .logo{width:min(200px,50%)}
+body.focus .panel{min-height:0;cursor:pointer}
+body.focus .time{font-size:min(27vw,38vh,24rem);white-space:nowrap}
+body.focus .phase{font-size:clamp(1.6rem,6vw,3rem)}
+body.focus .meta{font-size:1rem}
+body.focus .controls{max-width:560px;width:100%;margin:0 auto}
+body.focus .controls .btn{padding:12px 8px;font-size:.95rem}
+@media (orientation:landscape) and (max-height:520px){
+  body.focus .logo{width:130px}
+  body.focus .time{font-size:min(58vh,32vw)}
+  body.focus .phase{font-size:1.4rem}
+}
+
 </style>
 <style>[hidden]{display:none!important}body{margin:0}img{max-width:100%}</style>
 </head>
@@ -110,7 +126,7 @@ fieldset:disabled{opacity:.5}
       <div class="field"><label for="prep">Preparação (s)</label>
         <select id="prep"><option>10</option><option>20</option><option>0</option></select></div>
       <div class="field"><label for="warn">Aviso amarelo (s)</label>
-        <select id="warn"><option>30</option><option>20</option><option>15</option><option>0</option></select></div>
+        <select id="warn"><option>10</option><option>15</option><option>20</option><option>30</option><option>0</option></select></div>
       <div class="field"><label for="ends">Total de séries</label>
         <input id="ends" type="number" min="1" max="99"></div>
       <div class="field"><label for="fmt">Formato</label>
@@ -145,15 +161,15 @@ fieldset:disabled{opacity:.5}
     <button class="btn" id="bReset">Zerar</button>
   </div>
 
-  <p class="legend">Tempo de tiro: 30 s por flecha (padrão) ou 40 s por flecha (PCD). Vermelho: preparação ou parar. Verde: atirar. Amarelo: últimos segundos. Apitos: 2 = ir à linha, 1 = começar, 3 = recolher flechas. “Avançar” encerra a fase quando todos já atiraram.</p>
+  <p class="legend">Tempo de tiro: 30 s por flecha (padrão) ou 40 s por flecha (PCD). Vermelho: preparação ou parar. Verde: atirar. Amarelo: últimos segundos. Apitos: 2 = ir à linha, 1 = começar, 3 = recolher flechas. “Avançar” encerra a fase quando todos já atiraram. Durante o treino, toque no cronômetro para pausar ou retomar.</p>
 </div>
 
 <script>
 // Regras World Archery (desde 15/01/2022): 30 s por flecha; para-archery (PCD) +10 s = 40 s por flecha.
 const PER_ARROW={std:30,pcd:40};
 const PRESETS={
-  indoor:{label:"Indoor",arrows:3,prep:10,warn:30,ends:10},
-  outdoor:{label:"Outdoor",arrows:6,prep:10,warn:30,ends:6}
+  indoor:{label:"Indoor",arrows:3,prep:10,warn:10,ends:10},
+  outdoor:{label:"Outdoor",arrows:6,prep:10,warn:10,ends:6}
 };
 const $=id=>document.getElementById(id);
 const S={mode:"indoor",pcd:false,abcd:false,sound:true,auto:false,
@@ -216,7 +232,7 @@ function startPhase(i){
   S.remaining=ph.dur*1000;S.deadline=performance.now()+S.remaining;S.lastBeep=null;
   whistle(ph.type==="prep"?2:1);render();
 }
-function startEnd(){audio();S.queue=buildQueue();S.status="running";wake(true);startPhase(0)}
+function startEnd(){audio();{try{const r=document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();if(r&&r.catch)r.catch(()=>{})}catch(e){}}S.queue=buildQueue();S.status="running";wake(true);startPhase(0)}
 function finishEnd(){
   const c=cfg();whistle(3);S.arrowsShot+=c.arrows;
   if(S.set>=c.ends){S.status="finished";wake(false);render();return}
@@ -226,8 +242,7 @@ function nextPhase(){if(S.qi+1<S.queue.length)startPhase(S.qi+1);else finishEnd(
 function tick(now){
   if(S.status==="running"){
     S.totalMs+=now-(S.lastTick||now);S.remaining=S.deadline-now;
-    const ph=S.queue[S.qi],secLeft=Math.ceil(S.remaining/1000);
-    if(ph.type==="shoot"&&secLeft<=5&&secLeft>0&&S.lastBeep!==secLeft){S.lastBeep=secLeft;beep()}
+    
     if(S.remaining<=0)nextPhase();
     render();
   }else if(S.status==="endDone"&&S.auto&&S.autoAt){
@@ -244,12 +259,15 @@ function onMain(){
   else if(S.status==="finished")resetAll();
 }
 function onSkip(){if(S.status==="running"||S.status==="paused"){S.status="running";nextPhase()}}
-function resetAll(){S.status="idle";S.set=1;S.arrowsShot=0;S.totalMs=0;S.queue=buildQueue();S.qi=0;S.autoAt=0;wake(false);render()}
+function resetAll(){try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}catch(e){}S.status="idle";S.set=1;S.arrowsShot=0;S.totalMs=0;S.queue=buildQueue();S.qi=0;S.autoAt=0;wake(false);render()}
 
 /* Render */
 function render(){
   const c=cfg(),p=$("panel"),locked=!(S.status==="idle"||S.status==="finished");
   $("cfg").disabled=locked;
+  const focus=S.status==="running"||S.status==="paused";document.body.classList.toggle("focus",focus);
+  if(!focus){try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}catch(e){}}
+  $("bReset").textContent=locked?"Parar":"Zerar";
   document.querySelectorAll(".seg button,#t-pcd").forEach(b=>b.disabled=locked);
   $("mSet").textContent="Série "+S.set+"/"+c.ends;
   $("mMode").innerHTML=PRESETS[S.mode].label+" · "+c.arrows+" flechas"+(S.pcd?'<span class="badge">PCD</span>':"");
@@ -280,7 +298,7 @@ $("arrows").addEventListener("change",()=>{autoShoot();resetAll()});
 ["shoot","prep","warn","ends","fmt"].forEach(id=>$(id).addEventListener("change",render));
 function chip(id,key){$(id).onclick=()=>{S[key]=!S[key];$(id).setAttribute("aria-pressed",S[key]);if(key==="abcd"&&S.status==="idle")S.queue=buildQueue();render()}}
 chip("t-abcd","abcd");chip("t-sound","sound");chip("t-auto","auto");
-$("bMain").onclick=onMain;$("bSkip").onclick=onSkip;$("bReset").onclick=resetAll;
+$("bMain").onclick=onMain;$("panel").addEventListener("click",()=>{if(S.status==="running"||S.status==="paused")onMain()});$("bSkip").onclick=onSkip;$("bReset").onclick=resetAll;
 $("setPlus").onclick=()=>{if(S.status==="idle"||S.status==="endDone"){S.set=Math.min(cfg().ends,S.set+1);render()}};
 $("setMinus").onclick=()=>{if(S.status==="idle"||S.status==="endDone"){S.set=Math.max(1,S.set-1);render()}};
 document.addEventListener("keydown",e=>{if(e.code==="Space"&&e.target===document.body){e.preventDefault();onMain()}});
